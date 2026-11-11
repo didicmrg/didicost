@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DIDICOST</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#0A0E1A">
+<meta name="description" content="Controle pessoal de gastos e renda do mês.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DIDICOST">
+<meta name="format-detection" content="telephone=no">
+<style id="standalone-css">
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+</style>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+  <div class="wrap">
+    <header class="top">
+      <h1 class="brand">Didi<span>cost</span></h1>
+      <div class="month" role="group" aria-label="Mês exibido">
+        <button type="button" class="iconbtn" id="mes-ant" aria-label="Mês anterior">‹</button>
+        <p id="mes-label" aria-live="polite"></p>
+        <button type="button" class="iconbtn" id="mes-prox" aria-label="Próximo mês">›</button>
+      </div>
+    </header>
+    <p class="quem" id="conta-linha" hidden></p>
+    <div id="banners"></div>
+  </div>
+
+  <main class="wrap">
+    <section id="view-lanc" aria-labelledby="t-lanc">
+      <h2 class="sr" id="t-lanc">Lançamentos</h2>
+      <div class="summary" aria-label="Resumo do mês">
+        <small id="saldo-lbl">Saldo do mês</small>
+        <p class="big" id="saldo-val">—</p>
+        <p class="note" id="saldo-note" hidden></p>
+        <div class="split">
+          <div><small>Renda</small><b id="renda-val">—</b></div>
+          <div><small>Gastos</small><b id="gastos-val">R$ 0,00</b></div>
+        </div>
+        <p class="st" id="lim-pill" hidden></p>
+      </div>
+
+      <div class="bar">
+        <h2 class="sec" aria-hidden="true">Lançamentos</h2>
+        <label class="sr" for="filtro">Filtrar por categoria</label>
+        <select id="filtro"></select>
+      </div>
+      <p class="finfo" id="finfo" hidden></p>
+      <ul class="list" id="lista"></ul>
+      <div class="empty" id="vazio" hidden><b id="vazio-t"></b><p id="vazio-p"></p></div>
+    </section>
+
+    <section id="view-res" aria-labelledby="t-res" hidden>
+      <h2 class="sec" id="t-res" style="margin:14px 0 16px">Resumo</h2>
+      <div class="panel">
+        <span class="flabel">Gastos do mês</span>
+        <p class="resbig" id="res-total">R$ 0,00</p>
+        <p id="res-renda"></p>
+      </div>
+      <div class="panel" id="lim-box"></div>
+      <div class="panel">
+        <h3 class="flabel" style="margin:0">Para onde foi o dinheiro</h3>
+        <div id="donut-wrap"></div>
+        <p id="res-vazio" hidden></p>
+        <ul class="legend" id="legend" aria-label="Gastos por categoria"></ul>
+      </div>
+    </section>
+
+    <section id="view-aj" aria-labelledby="t-aj" hidden>
+      <h2 class="sec" id="t-aj" style="margin:14px 0 16px">Ajustes</h2>
+      <div class="panel">
+        <h3 class="flabel" style="margin:0">Conta</h3>
+        <div id="conta-box" class="contabox"></div>
+      </div>
+      <div class="panel">
+        <h3 class="flabel" style="margin:0">Limite e alerta</h3>
+        <p>O limite vale para os gastos de cada mês, incluindo contas fixas e parcelas. Deixe em branco para não usar limite.</p>
+        <form id="lim-form" novalidate>
+          <div class="two">
+            <div class="field">
+              <label for="f-lim">Limite mensal (R$)</label>
+              <input id="f-lim" inputmode="decimal" placeholder="Não definido" autocomplete="off" aria-describedby="e-lim">
+              <p class="err" id="e-lim"></p>
+            </div>
+            <div class="field">
+              <label for="f-alerta">Avisar em (%)</label>
+              <input id="f-alerta" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" aria-describedby="e-alerta">
+              <p class="err" id="e-alerta"></p>
+            </div>
+          </div>
+          <div class="actions" style="margin-top:12px">
+            <button class="btn primary" type="submit">Salvar limite</button>
+            <button class="btn" type="button" id="lim-remover">Remover limite</button>
+          </div>
+        </form>
+        <div class="notif">
+          <p id="notif-txt"></p>
+          <button class="btn" type="button" id="notif-btn" hidden>Ativar notificações</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3 class="flabel" style="margin:0">Categorias</h3>
+        <p>Crie aqui ou direto ao adicionar um gasto. Ao salvar um gasto, o app aprende as palavras da descrição para sugerir a categoria da próxima vez.</p>
+        <form id="cat-add" class="row" novalidate>
+          <label class="sr" for="cat-nova">Nome da nova categoria</label>
+          <input id="cat-nova" maxlength="30" placeholder="Nova categoria" autocomplete="off" aria-describedby="e-cat-nova">
+          <button class="btn primary" type="submit">Criar</button>
+        </form>
+        <p class="err" id="e-cat-nova"></p>
+        <ul class="cats" id="cats"></ul>
+      </div>
+      <div class="panel">
+        <h3 class="flabel" style="margin:0">Contas e rendas fixas</h3>
+        <p id="fixas-vazio">Nenhuma conta fixa ainda. Ao adicionar um gasto ou renda, escolha "Fixa" em Repetição.</p>
+        <ul class="fixas" id="fixas"></ul>
+      </div>
+      <div class="panel" id="backup-panel">
+        <h3 class="flabel" style="margin:0">Backup</h3>
+        <p>Guarde uma cópia dos seus dados em arquivo, no app Arquivos, no iCloud Drive ou no e-mail. Sem conta Google, é o que garante seus lançamentos se o iPhone apagar os dados do app ou se você trocar de celular.</p>
+        <p class="strong" id="backup-status"></p>
+        <div class="actions">
+          <button class="btn primary" type="button" id="bk-exp">Exportar backup</button>
+          <button class="btn" type="button" id="bk-imp">Restaurar backup</button>
+        </div>
+        <input type="file" id="bk-file" accept="application/json,.json" hidden>
+        <p>Sem conta, o Safari e o app instalado na tela de início guardam dados separados. Use sempre pelo ícone do app.</p>
+      </div>
+      <div class="panel" id="instalar-panel">
+        <h3 class="flabel" style="margin:0">Instalar na tela de início</h3>
+        <p id="instalado-txt" hidden>Você está usando o app instalado.</p>
+        <ol class="passos" id="instalar-passos">
+          <li>Abra este endereço no <b>Safari</b>.</li>
+          <li>Toque em <b>Compartilhar</b> (o quadrado com a seta para cima).</li>
+          <li>Toque em <b>Adicionar à Tela de Início</b> e depois em <b>Adicionar</b>.</li>
+          <li>Abra sempre pelo ícone. Depois da primeira abertura com internet, ele funciona offline.</li>
+        </ol>
+        <p>No Android com Chrome: menu ⋮ › Instalar app.</p>
+      </div>
+    </section>
+  </main>
+
+  <button type="button" class="fab" id="fab">+ Adicionar</button>
+
+  <nav class="tabs" aria-label="Seções">
+    <div class="in">
+      <button type="button" class="tab" id="tab-lanc" aria-current="page">Lançamentos</button>
+      <button type="button" class="tab" id="tab-res">Resumo</button>
+      <button type="button" class="tab" id="tab-aj">Ajustes</button>
+    </div>
+  </nav>
+</div>
+
+<div class="overlay" id="sheet" hidden>
+  <form class="sheet" id="form" novalidate role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="grab" aria-hidden="true"></div>
+    <h2 id="sheet-title">Novo lançamento</h2>
+    <fieldset class="seg">
+      <legend class="sr">Tipo de lançamento</legend>
+      <input type="radio" name="tipo" id="t-gasto" value="gasto" checked><label for="t-gasto">Gasto</label>
+      <input type="radio" name="tipo" id="t-renda" value="renda"><label for="t-renda">Renda</label>
+    </fieldset>
+    <p class="hint" id="serie-info" hidden></p>
+    <div class="field" id="rep-wrap">
+      <span class="flabel" id="rep-lbl">Repetição</span>
+      <fieldset class="seg seg3" aria-labelledby="rep-lbl">
+        <input type="radio" name="rep" id="r-unica" value="unica" checked><label for="r-unica">Única</label>
+        <input type="radio" name="rep" id="r-parc" value="parcelada"><label for="r-parc">Parcelada</label>
+        <input type="radio" name="rep" id="r-fixa" value="fixa"><label for="r-fixa">Fixa</label>
+      </fieldset>
+    </div>
+    <div class="field">
+      <label for="f-desc">Descrição</label>
+      <input id="f-desc" maxlength="80" autocomplete="off" aria-describedby="e-desc">
+      <p class="err" id="e-desc"></p>
+    </div>
+    <div class="two">
+      <div class="field">
+        <label for="f-valor" id="lbl-valor">Valor (R$)</label>
+        <input id="f-valor" inputmode="decimal" placeholder="0,00" autocomplete="off" aria-describedby="e-valor">
+        <p class="err" id="e-valor"></p>
+      </div>
+      <div class="field">
+        <label for="f-data">Data</label>
+        <input id="f-data" type="date" aria-describedby="e-data">
+        <p class="err" id="e-data"></p>
+      </div>
+    </div>
+    <div class="field" id="parc-wrap" hidden>
+      <label for="f-parc">Número de parcelas</label>
+      <input id="f-parc" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="Ex.: 10" autocomplete="off" aria-describedby="rep-hint e-parc">
+      <p class="err" id="e-parc"></p>
+    </div>
+    <p class="hint" id="rep-hint" hidden></p>
+    <div class="field" id="cat-field">
+      <label for="f-cat">Categoria</label>
+      <select id="f-cat" aria-describedby="h-cat e-cat"></select>
+      <p class="hint" id="h-cat" hidden>Sugerida pelo que você já classificou. Pode trocar.</p>
+      <div class="nova" id="nova-wrap" hidden>
+        <label class="flabel" for="f-nova">Nome da nova categoria</label>
+        <input id="f-nova" maxlength="30" autocomplete="off" aria-describedby="e-cat">
+      </div>
+      <p class="err" id="e-cat"></p>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn primary">Salvar</button>
+      <button type="button" class="btn" id="btn-cancel">Cancelar</button>
+    </div>
+    <button type="button" class="btn ghost-danger" id="btn-del" hidden>Excluir lançamento</button>
+  </form>
+</div>
+
+<div class="overlay center" id="dlg" hidden>
+  <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title" aria-describedby="dlg-body">
+    <h2 id="dlg-title"></h2>
+    <div id="dlg-body"></div>
+    <div class="actions" id="dlg-actions"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
