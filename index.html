@@ -76,6 +76,36 @@
       </div>
     </section>
 
+    <section id="view-inv" aria-labelledby="t-inv" hidden>
+      <h2 class="sec" id="t-inv" style="margin:14px 0 16px">Investimentos</h2>
+      <div class="empty" id="inv-vazio" hidden>
+        <b>Nenhum investimento ainda</b>
+        <p>Ao adicionar um gasto, escolha uma categoria com "Investimento" no nome. Esses valores somam aqui, mês a mês, inclusive aportes fixos e parcelados.</p>
+        <button type="button" class="btn primary" id="inv-criar" style="margin-top:14px">Criar categoria Investimento</button>
+      </div>
+      <div id="inv-cont">
+        <div class="summary">
+          <small>Total investido</small>
+          <p class="big" id="inv-total">R$ 0,00</p>
+          <p class="note" id="inv-sub"></p>
+          <div class="split">
+            <div><small id="inv-mes-lbl">Neste mês</small><b id="inv-mes">R$ 0,00</b></div>
+            <div><small>Programado</small><b id="inv-prog">R$ 0,00</b></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3 class="flabel" style="margin:0">Últimos 12 meses</h3>
+          <p id="inv-fixas" hidden></p>
+          <div id="inv-meses" class="mbars"></div>
+        </div>
+        <div class="panel">
+          <h3 class="flabel" style="margin:0">Por destino</h3>
+          <ul class="legend" id="inv-destinos" aria-label="Total investido por destino"></ul>
+          <p>"Programado" soma parcelas e aportes com data depois de hoje. O total investido conta só o que já chegou na data.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="view-aj" aria-labelledby="t-aj" hidden>
       <h2 class="sec" id="t-aj" style="margin:14px 0 16px">Ajustes</h2>
       <div class="panel">
@@ -155,6 +185,7 @@
     <div class="in">
       <button type="button" class="tab" id="tab-lanc" aria-current="page">Lançamentos</button>
       <button type="button" class="tab" id="tab-res">Resumo</button>
+      <button type="button" class="tab" id="tab-inv">Investimentos</button>
       <button type="button" class="tab" id="tab-aj">Ajustes</button>
     </div>
   </nav>

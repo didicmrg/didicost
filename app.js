@@ -669,8 +669,79 @@ $('#bk-file').addEventListener('change',function(){
   rd.readAsText(f);
 });
 
+/* ---------- Investimentos ---------- */
+/* Conta como investimento todo gasto cuja categoria tenha "invest" no nome (Investimento, Investimentos, INVESTIMENTO…) */
+function ehInvest(l){return l.tipo==='gasto'&&!!l.categoria&&norm(l.categoria).indexOf('invest')>=0;}
+function mesCurto(k){var p=k.split('-').map(Number);var s=new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(new Date(p[0],p[1]-1,1)).replace('.','');return s+'/'+String(p[0]).slice(2);}
+/* Todos os aportes: lançamentos (inclui parcelas) + contas fixas de investimento até o mês atual */
+function aportes(){
+  var atual=hoje().slice(0,7),out=state.lancamentos.filter(ehInvest);
+  state.fixas.forEach(function(f){
+    if(f.tipo!=='gasto')return;
+    var fim=f.fim&&f.fim<atual?f.fim:atual;
+    for(var k=f.inicio,n=0;k<=fim&&n<600;k=addMes(k,1),n++){
+      var o=ocorrenciaFixa(f,k);
+      if(o&&ehInvest(o))out.push(o);
+    }
+  });
+  return out;
+}
+function renderInvest(){
+  var hj=hoje(),todos=aportes();
+  var feitos=todos.filter(function(l){return l.data<=hj;});
+  var futuros=todos.filter(function(l){return l.data>hj;});
+  var total=soma(feitos);
+  var noMes=soma(state.lancamentos.filter(function(l){return ehInvest(l)&&l.data.slice(0,7)===mes;}).concat(ocorrenciasFixas(mes).filter(ehInvest)));
+  var vazio=!todos.length&&!state.fixas.some(ehInvest);
+  $('#inv-vazio').hidden=!vazio;
+  $('#inv-cont').hidden=vazio;
+  var temCat=state.categorias.some(function(c){return norm(c).indexOf('invest')>=0;});
+  $('#inv-criar').hidden=temCat;
+  if(vazio)return;
+  $('#inv-total').textContent=brl(total);
+  var primeiro=feitos.length?feitos.reduce(function(a,l){return l.data<a?l.data:a;},feitos[0].data):null;
+  $('#inv-sub').textContent=feitos.length?plural(feitos.length,'aporte','aportes')+' desde '+mesLabel(primeiro.slice(0,7)).toLowerCase():'Nenhum aporte até hoje.';
+  $('#inv-mes-lbl').textContent='Em '+mesLabel(mes).toLowerCase();
+  $('#inv-mes').textContent=brl(noMes);
+  $('#inv-prog').textContent=brl(soma(futuros));
+  var nf=state.fixas.filter(function(f){return ehInvest(f)&&(!f.fim||f.fim>=hj.slice(0,7));});
+  $('#inv-fixas').textContent=nf.length?plural(nf.length,'aporte fixo ativo','aportes fixos ativos')+': '+brl(soma(nf))+' por mês.':'';
+  $('#inv-fixas').hidden=!nf.length;
+
+  /* Últimos 12 meses */
+  var atual=hj.slice(0,7),meses=[];
+  for(var i=11;i>=0;i--)meses.push(addMes(atual,-i));
+  var porMes={};feitos.forEach(function(l){var k=l.data.slice(0,7);porMes[k]=(porMes[k]||0)+l.valorCentavos;});
+  var max=Math.max.apply(null,meses.map(function(k){return porMes[k]||0;}))||1;
+  var box=$('#inv-meses');box.textContent='';
+  meses.forEach(function(k){
+    var v=porMes[k]||0;
+    var row=document.createElement('div');row.className='mbar'+(v?'':' zero');
+    var lb=document.createElement('span');lb.className='ml';lb.textContent=mesCurto(k);
+    var tr=document.createElement('span');tr.className='mt';tr.setAttribute('aria-hidden','true');
+    var fl=document.createElement('i');fl.style.width=(v?Math.max(2,v*100/max):0)+'%';tr.appendChild(fl);
+    var vl=document.createElement('span');vl.className='mv';vl.textContent=brl(v);
+    row.appendChild(lb);row.appendChild(tr);row.appendChild(vl);box.appendChild(row);
+  });
+
+  /* Por destino: agrupa pela descrição */
+  var grupos={},ordem=[];
+  feitos.forEach(function(l){var k=norm(l.descricao);if(!grupos[k]){grupos[k]={nome:l.descricao,cents:0,n:0};ordem.push(k);}grupos[k].cents+=l.valorCentavos;grupos[k].n++;});
+  var lista=ordem.map(function(k){return grupos[k];}).sort(function(a,b){return b.cents-a.cents||a.nome.localeCompare(b.nome,'pt-BR');});
+  var ul=$('#inv-destinos');ul.textContent='';
+  if(!lista.length){var li0=document.createElement('li');li0.className='zero';li0.textContent='Os aportes aparecem aqui quando a data deles chegar.';ul.appendChild(li0);return;}
+  var pcts=percentuais(lista.map(function(g){return g.cents;}),total);
+  lista.forEach(function(g,idx){ul.appendChild(linhaLegenda(g.nome,CORES[idx%CORES.length],g.cents,pcts[idx],g.n));});
+}
+$('#inv-criar').addEventListener('click',function(){
+  if(bloqueado())return;
+  if(!state.categorias.some(function(c){return norm(c).indexOf('invest')>=0;}))state.categorias.push('Investimento');
+  var ok=salvar();render();
+  if(ok)anunciar('Categoria "Investimento" criada. Use-a ao adicionar seus aportes.');
+});
+
 /* ---------- Renderização ---------- */
-function render(){renderBanners();renderMes();renderResumo();renderFiltro();renderLista();renderCats();renderFixas();renderResumoTab();renderLimiteForm();renderBackupStatus();renderConta();}
+function render(){renderBanners();renderMes();renderResumo();renderFiltro();renderLista();renderCats();renderFixas();renderResumoTab();renderLimiteForm();renderBackupStatus();renderConta();renderInvest();}
 
 function renderBanners(){
   var box=$('#banners');box.textContent='';
@@ -721,16 +792,17 @@ function renderBanners(){
 function renderMes(){$('#mes-label').textContent=mesLabel(mes);}
 
 /* Contas fixas não são copiadas mês a mês: cada mês calcula a sua ocorrência (com ajustes feitos só naquele mês) */
+function ocorrenciaFixa(f,k){
+  if(k<f.inicio||(f.fim&&k>f.fim))return null;
+  var ex=f.excecoes[k];
+  if(ex&&ex.removido)return null;
+  var o={id:'fx:'+f.id+':'+k,fixaId:f.id,mesRef:k,virtual:true,tipo:f.tipo,data:dataComDia(k,f.dia),descricao:f.descricao,valorCentavos:f.valorCentavos,categoria:f.categoria,criadoEm:f.criadoEm};
+  if(ex)['descricao','valorCentavos','data','categoria'].forEach(function(p){if(ex[p]!=null)o[p]=ex[p];});
+  return o;
+}
 function ocorrenciasFixas(k){
   var out=[];
-  state.fixas.forEach(function(f){
-    if(k<f.inicio||(f.fim&&k>f.fim))return;
-    var ex=f.excecoes[k];
-    if(ex&&ex.removido)return;
-    var o={id:'fx:'+f.id+':'+k,fixaId:f.id,mesRef:k,virtual:true,tipo:f.tipo,data:dataComDia(k,f.dia),descricao:f.descricao,valorCentavos:f.valorCentavos,categoria:f.categoria,criadoEm:f.criadoEm};
-    if(ex)['descricao','valorCentavos','data','categoria'].forEach(function(p){if(ex[p]!=null)o[p]=ex[p];});
-    out.push(o);
-  });
+  state.fixas.forEach(function(f){var o=ocorrenciaFixa(f,k);if(o)out.push(o);});
   return out;
 }
 function acharFixa(id){return state.fixas.filter(function(f){return f.id===id;})[0]||null;}
@@ -1168,7 +1240,7 @@ $('#mes-prox').addEventListener('click',function(){mes=addMes(mes,1);render();})
 $('#filtro').addEventListener('change',function(e){filtro=e.target.value;renderLista();});
 $('#fab').addEventListener('click',function(){abrirForm(null);});
 function irPara(v){
-  ['lanc','res','aj'].forEach(function(n){
+  ['lanc','res','inv','aj'].forEach(function(n){
     $('#view-'+n).hidden=n!==v;
     if(n===v)$('#tab-'+n).setAttribute('aria-current','page');else $('#tab-'+n).removeAttribute('aria-current');
   });
@@ -1177,6 +1249,7 @@ function irPara(v){
 }
 $('#tab-lanc').addEventListener('click',function(){irPara('lanc');});
 $('#tab-res').addEventListener('click',function(){irPara('res');});
+$('#tab-inv').addEventListener('click',function(){irPara('inv');});
 $('#tab-aj').addEventListener('click',function(){irPara('aj');});
 
 render();

@@ -1,7 +1,7 @@
 /* DIDICOST · service worker
    Guarda só os arquivos do app para abrir sem internet.
    Os lançamentos ficam no próprio aparelho (localStorage) e nunca passam por aqui. */
-var CACHE = 'didicost-v2';
+var CACHE = 'didicost-v3';
 var ARQUIVOS = [
   './',
   './index.html',
