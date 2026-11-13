@@ -258,7 +258,7 @@ var storageOk=true,erroLeitura=false;
 function padrao(){return {version:1,categorias:['Outros'],palavras:{},lancamentos:[],fixas:[],settings:{limiteCentavos:null,alertaPct:80,avisos:{}}};}
 function valido(d){
   if(!d||d.version!==1||!Array.isArray(d.categorias)||!Array.isArray(d.lancamentos)||typeof d.palavras!=='object'||d.palavras===null)return false;
-  return d.lancamentos.every(function(l){return l&&typeof l.id==='string'&&(l.tipo==='gasto'||l.tipo==='renda')&&dataValida(l.data)&&Number.isSafeInteger(l.valorCentavos)&&typeof l.descricao==='string';});
+  return d.lancamentos.every(function(l){return l&&typeof l.id==='string'&&(l.tipo==='gasto'||l.tipo==='renda'||l.tipo==='investimento')&&dataValida(l.data)&&Number.isSafeInteger(l.valorCentavos)&&typeof l.descricao==='string';});
 }
 function carregar(){
   var raw=null;
@@ -399,8 +399,8 @@ function cancelar(){return {rotulo:'Cancelar',run:function(){return true;}};}
 /* ---------- Limite, alerta e notificações ---------- */
 var RANK={sem:0,ok:0,alerta:1,excedido:2};
 function gastosDoMes(k){
-  return state.lancamentos.filter(function(l){return l.tipo==='gasto'&&l.data.slice(0,7)===k;})
-    .concat(ocorrenciasFixas(k).filter(function(o){return o.tipo==='gasto';}));
+  return state.lancamentos.filter(function(l){return l.tipo==='gasto'&&mesDe(l)===k;})
+    .concat(fixasNoMes(k).filter(function(o){return o.tipo==='gasto';}));
 }
 function soma(lista){return lista.reduce(function(s,l){return s+l.valorCentavos;},0);}
 function pctTxt(parte,todo){var t=Math.floor(parte*1000/todo);return (t/10).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';}
@@ -582,6 +582,29 @@ $('#lim-remover').addEventListener('click',function(){
   }}]});
 });
 
+/* ---------- Ajustes: cartão de crédito ---------- */
+function renderCartao(){
+  var c=cartao();
+  if(document.activeElement!==$('#f-vence'))$('#f-vence').value=c.vence;
+  if(document.activeElement!==$('#f-fecha'))$('#f-fecha').value=c.fecha||'';
+  var ex=vencimentoDe(hoje());
+  $('#h-fecha').textContent='Uma compra feita hoje no crédito desconta em '+dataCurta(ex)+'/'+ex.slice(0,4)+'.';
+}
+$('#cartao-form').addEventListener('submit',function(e){
+  e.preventDefault();
+  if(bloqueado())return;
+  var fv=$('#f-vence'),ff=$('#f-fecha'),ev=$('#e-vence'),ef=$('#e-fecha'),primeiro=null;
+  ev.textContent='';ef.textContent='';fv.removeAttribute('aria-invalid');ff.removeAttribute('aria-invalid');
+  var v=/^\d+$/.test(fv.value.trim())?parseInt(fv.value,10):NaN;
+  var f=ff.value.trim()?(/^\d+$/.test(ff.value.trim())?parseInt(ff.value,10):NaN):null;
+  if(!(v>=1&&v<=31)){ev.textContent='Use um dia de 1 a 31.';fv.setAttribute('aria-invalid','true');primeiro=fv;}
+  if(f!==null&&!(f>=1&&f<=31)){ef.textContent='Use um dia de 1 a 31, ou deixe em branco.';ff.setAttribute('aria-invalid','true');if(!primeiro)primeiro=ff;}
+  if(primeiro){primeiro.focus();return;}
+  state.settings.cartao={vence:v,fecha:f};
+  var ok=salvar();fv.blur();ff.blur();render();
+  if(ok)anunciar('Cartão salvo: vence dia '+v+(f?', fecha dia '+f:'')+'.');
+});
+
 /* ---------- Backup ---------- */
 var DIA=864e5;
 function dataBR(iso){var d=new Date(iso);return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();}
@@ -671,13 +694,13 @@ $('#bk-file').addEventListener('change',function(){
 
 /* ---------- Investimentos ---------- */
 /* Conta como investimento todo gasto cuja categoria tenha "invest" no nome (Investimento, Investimentos, INVESTIMENTO…) */
-function ehInvest(l){return l.tipo==='gasto'&&!!l.categoria&&norm(l.categoria).indexOf('invest')>=0;}
+function ehInvest(l){return l.tipo==='investimento'||(l.tipo==='gasto'&&!!l.categoria&&norm(l.categoria).indexOf('invest')>=0);}
 function mesCurto(k){var p=k.split('-').map(Number);var s=new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(new Date(p[0],p[1]-1,1)).replace('.','');return s+'/'+String(p[0]).slice(2);}
 /* Todos os aportes: lançamentos (inclui parcelas) + contas fixas de investimento até o mês atual */
 function aportes(){
   var atual=hoje().slice(0,7),out=state.lancamentos.filter(ehInvest);
   state.fixas.forEach(function(f){
-    if(f.tipo!=='gasto')return;
+    if(f.tipo==='renda')return;
     var fim=f.fim&&f.fim<atual?f.fim:atual;
     for(var k=f.inicio,n=0;k<=fim&&n<600;k=addMes(k,1),n++){
       var o=ocorrenciaFixa(f,k);
@@ -688,10 +711,10 @@ function aportes(){
 }
 function renderInvest(){
   var hj=hoje(),todos=aportes();
-  var feitos=todos.filter(function(l){return l.data<=hj;});
-  var futuros=todos.filter(function(l){return l.data>hj;});
+  var feitos=todos.filter(function(l){return dataConta(l)<=hj;});
+  var futuros=todos.filter(function(l){return dataConta(l)>hj;});
   var total=soma(feitos);
-  var noMes=soma(state.lancamentos.filter(function(l){return ehInvest(l)&&l.data.slice(0,7)===mes;}).concat(ocorrenciasFixas(mes).filter(ehInvest)));
+  var noMes=soma(doMes().filter(ehInvest));
   var vazio=!todos.length&&!state.fixas.some(ehInvest);
   $('#inv-vazio').hidden=!vazio;
   $('#inv-cont').hidden=vazio;
@@ -699,7 +722,7 @@ function renderInvest(){
   $('#inv-criar').hidden=temCat;
   if(vazio)return;
   $('#inv-total').textContent=brl(total);
-  var primeiro=feitos.length?feitos.reduce(function(a,l){return l.data<a?l.data:a;},feitos[0].data):null;
+  var primeiro=feitos.length?feitos.reduce(function(a,l){return dataConta(l)<a?dataConta(l):a;},dataConta(feitos[0])):null;
   $('#inv-sub').textContent=feitos.length?plural(feitos.length,'aporte','aportes')+' desde '+mesLabel(primeiro.slice(0,7)).toLowerCase():'Nenhum aporte até hoje.';
   $('#inv-mes-lbl').textContent='Em '+mesLabel(mes).toLowerCase();
   $('#inv-mes').textContent=brl(noMes);
@@ -711,7 +734,7 @@ function renderInvest(){
   /* Últimos 12 meses */
   var atual=hj.slice(0,7),meses=[];
   for(var i=11;i>=0;i--)meses.push(addMes(atual,-i));
-  var porMes={};feitos.forEach(function(l){var k=l.data.slice(0,7);porMes[k]=(porMes[k]||0)+l.valorCentavos;});
+  var porMes={};feitos.forEach(function(l){var k=mesDe(l);porMes[k]=(porMes[k]||0)+l.valorCentavos;});
   var max=Math.max.apply(null,meses.map(function(k){return porMes[k]||0;}))||1;
   var box=$('#inv-meses');box.textContent='';
   meses.forEach(function(k){
@@ -741,7 +764,7 @@ $('#inv-criar').addEventListener('click',function(){
 });
 
 /* ---------- Renderização ---------- */
-function render(){renderBanners();renderMes();renderResumo();renderFiltro();renderLista();renderCats();renderFixas();renderResumoTab();renderLimiteForm();renderBackupStatus();renderConta();renderInvest();}
+function render(){renderBanners();renderMes();renderResumo();renderFiltro();renderLista();renderCats();renderFixas();renderResumoTab();renderLimiteForm();renderBackupStatus();renderConta();renderInvest();renderCartao();}
 
 function renderBanners(){
   var box=$('#banners');box.textContent='';
@@ -798,6 +821,7 @@ function ocorrenciaFixa(f,k){
   if(ex&&ex.removido)return null;
   var o={id:'fx:'+f.id+':'+k,fixaId:f.id,mesRef:k,virtual:true,tipo:f.tipo,data:dataComDia(k,f.dia),descricao:f.descricao,valorCentavos:f.valorCentavos,categoria:f.categoria,criadoEm:f.criadoEm};
   if(ex)['descricao','valorCentavos','data','categoria'].forEach(function(p){if(ex[p]!=null)o[p]=ex[p];});
+  if(f.pagamento==='credito'&&o.tipo==='gasto'){o.pagamento='credito';o.dataConta=vencimentoDe(o.data);}
   return o;
 }
 function ocorrenciasFixas(k){
@@ -805,13 +829,43 @@ function ocorrenciasFixas(k){
   state.fixas.forEach(function(f){var o=ocorrenciaFixa(f,k);if(o)out.push(o);});
   return out;
 }
+/* ---------- Cartão de crédito ---------- */
+function cartao(){var c=state.settings.cartao;return c&&c.vence?c:{vence:10,fecha:null};}
+/* Dia em que uma compra no crédito é descontada: o vencimento da fatura em que ela entra.
+   Sem dia de fechamento: vai para o vencimento do mês seguinte. Com fechamento: compras a partir do dia de fechamento passam para a fatura seguinte. */
+function vencimentoDe(data){
+  var c=cartao(),k=data.slice(0,7),d=Number(data.slice(8,10));
+  if(!c.fecha)return dataComDia(addMes(k,1),c.vence);
+  var kf=d<c.fecha?k:addMes(k,1);
+  var fecha=dataComDia(kf,c.fecha),venc=dataComDia(kf,c.vence);
+  if(venc<=fecha)venc=dataComDia(addMes(kf,1),c.vence);
+  return venc;
+}
+function dataConta(l){return l.dataConta||l.data;}
+function mesDe(l){return dataConta(l).slice(0,7);}
+function fixarConta(l){if(l.pagamento==='credito'&&l.tipo==='gasto')l.dataConta=vencimentoDe(l.data);else{delete l.dataConta;delete l.pagamento;}}
+/* Ocorrências de contas fixas descontadas no mês k (no crédito, a compra de um mês cai num mês seguinte) */
+function fixasNoMes(k){
+  var out=[];
+  [addMes(k,-2),addMes(k,-1),k].forEach(function(kk){ocorrenciasFixas(kk).forEach(function(o){if(mesDe(o)===k)out.push(o);});});
+  return out;
+}
 function acharFixa(id){return state.fixas.filter(function(f){return f.id===id;})[0]||null;}
-function doMes(){return state.lancamentos.filter(function(l){return l.data.slice(0,7)===mes;}).concat(ocorrenciasFixas(mes));}
+function doMes(){return state.lancamentos.filter(function(l){return mesDe(l)===mes;}).concat(fixasNoMes(mes));}
 
 function renderResumo(){
-  var itens=doMes(),renda=0,gastos=0,nRenda=0;
-  itens.forEach(function(l){if(l.tipo==='renda'){renda+=l.valorCentavos;nRenda++;}else gastos+=l.valorCentavos;});
+  var itens=doMes(),renda=0,gastos=0,nRenda=0,invest=0,fatura=0;
+  itens.forEach(function(l){
+    if(l.tipo==='renda'){renda+=l.valorCentavos;nRenda++;}
+    else if(l.tipo==='investimento')invest+=l.valorCentavos;
+    else{gastos+=l.valorCentavos;if(l.pagamento==='credito')fatura+=l.valorCentavos;}
+  });
   $('#gastos-val').textContent=brl(gastos);
+  $('#inv-col').hidden=!invest;$('#saldo-split').classList.toggle('tres',!!invest);
+  $('#investido-val').textContent=brl(invest);
+  var fn=$('#fatura-note');
+  if(fatura){fn.hidden=false;fn.textContent='Inclui '+brl(fatura)+' da fatura do cartão (vence dia '+cartao().vence+').';}
+  else{fn.hidden=true;fn.textContent='';}
   var sv=$('#saldo-val'),sl=$('#saldo-lbl'),sn=$('#saldo-note');
   sv.classList.remove('neg');
   if(nRenda===0){
@@ -820,7 +874,7 @@ function renderResumo(){
     sn.hidden=false;sn.textContent='Renda não registrada. Adicione a renda do mês para ver o saldo.';
   }else{
     $('#renda-val').textContent=brl(renda);
-    var saldo=renda-gastos;
+    var saldo=renda-gastos-invest;
     sv.textContent=brl(saldo);
     if(saldo<0){sv.classList.add('neg');sl.textContent='Saldo negativo';}else sl.textContent='Saldo do mês';
     sn.hidden=true;sn.textContent='';
@@ -829,14 +883,16 @@ function renderResumo(){
 
 function renderFiltro(){
   var sel=$('#filtro');sel.textContent='';
-  sel.appendChild(new Option('Todos','')); sel.appendChild(new Option('Só renda','__renda'));
+  sel.appendChild(new Option('Todos','')); sel.appendChild(new Option('Só renda','__renda'));sel.appendChild(new Option('Só investimentos','__inv'));sel.appendChild(new Option('Só crédito','__credito'));
   catsOrdenadas().forEach(function(c){sel.appendChild(new Option(c,c));});
-  if(filtro&&filtro!=='__renda'&&state.categorias.indexOf(filtro)<0)filtro='';
+  if(filtro&&filtro.indexOf('__')!==0&&state.categorias.indexOf(filtro)<0)filtro='';
   sel.value=filtro;
 }
 
 function passaFiltro(l){
   if(!filtro)return true;
+  if(filtro==='__inv')return l.tipo==='investimento';
+  if(filtro==='__credito')return l.pagamento==='credito';
   if(filtro==='__renda')return l.tipo==='renda';
   return l.tipo==='gasto'&&l.categoria===filtro;
 }
@@ -844,19 +900,20 @@ function passaFiltro(l){
 function renderLista(){
   var ul=$('#lista');ul.textContent='';
   var doM=doMes();
-  var itens=doM.filter(passaFiltro).sort(function(a,b){return b.data.localeCompare(a.data)||String(b.criadoEm).localeCompare(String(a.criadoEm));});
+  var itens=doM.filter(passaFiltro).sort(function(a,b){return dataConta(b).localeCompare(dataConta(a))||String(b.criadoEm).localeCompare(String(a.criadoEm));});
   itens.forEach(function(l){
     var li=document.createElement('li');
-    var b=document.createElement('button');b.type='button';b.className='item'+(l.tipo==='renda'?' renda':'');b.dataset.id=l.id;
+    var b=document.createElement('button');b.type='button';b.className='item'+(l.tipo==='renda'?' renda':l.tipo==='investimento'?' invest':'');b.dataset.id=l.id;
     var txt=document.createElement('span');
     var d=document.createElement('span');d.className='d';d.textContent=l.descricao;
-    var meta=dataCurta(l.data)+' · '+(l.tipo==='renda'?'Renda':l.categoria);
+    var meta=dataCurta(dataConta(l))+' · '+(l.tipo==='renda'?'Renda':l.tipo==='investimento'?'Investimento':l.categoria);
+    if(l.pagamento==='credito')meta+=' · Crédito, compra '+dataCurta(l.data);
     if(l.serie)meta+=' · Parcela '+l.serie.parcela+'/'+l.serie.total;
     if(l.virtual)meta+=' · Fixa';
     var m=document.createElement('span');m.className='m';m.textContent=meta;
     txt.appendChild(d);txt.appendChild(m);
-    var v=document.createElement('span');v.className='v';v.textContent=(l.tipo==='renda'?'+ ':'− ')+brl(l.valorCentavos);
-    var sr=document.createElement('span');sr.className='sr';sr.textContent=l.tipo==='renda'?', entrada. Toque para editar.':', saída. Toque para editar.';
+    var v=document.createElement('span');v.className='v';v.textContent=(l.tipo==='renda'?'+ ':l.tipo==='investimento'?'→ ':'− ')+brl(l.valorCentavos);
+    var sr=document.createElement('span');sr.className='sr';sr.textContent=l.tipo==='renda'?', entrada. Toque para editar.':l.tipo==='investimento'?', investimento. Toque para editar.':', saída. Toque para editar.';
     b.appendChild(txt);b.appendChild(v);b.appendChild(sr);
     b.addEventListener('click',function(){abrirForm(l);});
     li.appendChild(b);ul.appendChild(li);
@@ -921,14 +978,23 @@ function preencherCats(valor){
   fCat.appendChild(new Option('+ Nova categoria…','__nova'));
   fCat.value=valor&&state.categorias.indexOf(valor)>=0?valor:'Outros';
 }
+function pagAtual(){return form.querySelector('input[name="pag"]:checked').value;}
+function atualizarPag(){
+  var h=$('#pag-hint'),g=tipoAtual()==='gasto';
+  if(!g||pagAtual()!=='credito'||!dataValida(fData.value)){h.hidden=true;h.textContent='';return;}
+  var v=vencimentoDe(fData.value);
+  h.hidden=false;h.textContent='Entra na fatura que vence em '+dataCurta(v)+'/'+v.slice(0,4)+'. Só desconta nesse dia.'+(repAtual()==='parcelada'?' Cada parcela cai na fatura do mês seguinte à anterior.':'');
+}
 function atualizarTipo(){
-  var g=tipoAtual()==='gasto';
+  var t=tipoAtual(),g=t==='gasto';
   $('#cat-field').hidden=!g;
-  fDesc.placeholder=g?'Ex.: Mercado, Uber, Aluguel':'Ex.: Salário, Job';
+  $('#pag-wrap').hidden=!g;
+  fDesc.placeholder=g?'Ex.: Mercado, Uber, Aluguel':t==='renda'?'Ex.: Salário, Job':'Ex.: CDB, Tesouro, Ações';
   var rp=$('#r-parc');
   rp.disabled=!g;
   if(!g&&rp.checked)$('#r-unica').checked=true;
   atualizarRep();
+  atualizarPag();
 }
 function atualizarRep(){
   var hint=$('#rep-hint');
@@ -958,6 +1024,7 @@ function abrirForm(item){
   limparErros();
   $('#sheet-title').textContent=item?(item.virtual?'Editar conta fixa':item.serie?'Editar parcela':'Editar lançamento'):'Novo lançamento';
   form.querySelector('input[name="tipo"][value="'+(item?item.tipo:'gasto')+'"]').checked=true;
+  form.querySelector('input[name="pag"][value="'+(item&&item.pagamento==='credito'?'credito':'debito')+'"]').checked=true;
   var serie=!!(item&&(item.virtual||item.serie));
   form.querySelectorAll('input[name="tipo"]').forEach(function(r){r.disabled=serie;});
   $('#r-unica').checked=true;fParc.value='';
@@ -980,7 +1047,9 @@ function abrirForm(item){
 function fecharForm(){fecharCamada();}
 
 form.querySelectorAll('input[name="tipo"]').forEach(function(r){r.addEventListener('change',atualizarTipo);});
-form.querySelectorAll('input[name="rep"]').forEach(function(r){r.addEventListener('change',atualizarRep);});
+form.querySelectorAll('input[name="rep"]').forEach(function(r){r.addEventListener('change',function(){atualizarRep();atualizarPag();});});
+form.querySelectorAll('input[name="pag"]').forEach(function(r){r.addEventListener('change',atualizarPag);});
+fData.addEventListener('input',atualizarPag);fData.addEventListener('change',atualizarPag);
 [fValor,fData,fParc].forEach(function(el){el.addEventListener('input',atualizarRep);});
 fDesc.addEventListener('input',function(){
   if(tipoAtual()!=='gasto'||catTocada)return;
@@ -1001,16 +1070,18 @@ function garantirCat(d){if(d.tipo==='gasto'&&state.categorias.indexOf(d.categori
 function concluir(d,msg){
   garantirCat(d);
   if(d.tipo==='gasto')aprender(d.descricao,d.categoria);
-  var extra=verificarAlertas([d.data.slice(0,7),hoje().slice(0,7)]);
+  var conta=d.pagamento==='credito'?vencimentoDe(d.data):d.data;
+  if(d.pagamento==='credito')msg+=' Entra na fatura de '+dataCurta(conta)+'.';
+  var extra=verificarAlertas([conta.slice(0,7),hoje().slice(0,7)]);
   if(extra)msg+=' '+extra;
   var ok=salvar();
-  var km=d.data.slice(0,7);
+  var km=conta.slice(0,7);
   if(km!==mes){mes=km;msg+=' Mostrando '+mesLabel(km)+'.';}
   fecharCamada($('#fab'));
   render();
   if(ok)anunciar(msg);
 }
-function aplicarEm(l,d){l.descricao=d.descricao;l.valorCentavos=d.valorCentavos;l.categoria=d.categoria;}
+function aplicarEm(l,d){l.descricao=d.descricao;l.valorCentavos=d.valorCentavos;l.categoria=d.categoria;if(d.pagamento)l.pagamento=d.pagamento;else delete l.pagamento;}
 
 form.addEventListener('submit',function(e){
   e.preventDefault();
@@ -1042,21 +1113,24 @@ form.addEventListener('submit',function(e){
   }
   if(primeiro){primeiro.focus();anunciar('Confira os campos destacados.');return;}
 
-  var d={tipo:tipo,descricao:desc,valorCentavos:cents,data:data,categoria:tipo==='gasto'?cat:null};
+  var d={tipo:tipo,descricao:desc,valorCentavos:cents,data:data,categoria:tipo==='gasto'?cat:null,pagamento:tipo==='gasto'&&pagAtual()==='credito'?'credito':null};
   var agora=new Date().toISOString();
 
   /* Novo lançamento */
   if(!editItem){
     if(rep==='fixa'){
-      state.fixas.push({id:novoId(),tipo:tipo,descricao:desc,valorCentavos:cents,categoria:d.categoria,dia:Number(data.slice(8)),inicio:data.slice(0,7),fim:null,excecoes:{},criadoEm:agora});
-      concluir(d,(tipo==='gasto'?'Conta fixa':'Renda fixa')+' adicionada. Ela aparece todo mês.');
+      var nf={id:novoId(),tipo:tipo,descricao:desc,valorCentavos:cents,categoria:d.categoria,dia:Number(data.slice(8)),inicio:data.slice(0,7),fim:null,excecoes:{},criadoEm:agora};
+      if(d.pagamento)nf.pagamento='credito';
+      state.fixas.push(nf);
+      concluir(d,(tipo==='gasto'?'Conta fixa adicionada':tipo==='renda'?'Renda fixa adicionada':'Investimento fixo adicionado')+'. Aparece todo mês.');
     }else if(rep==='parcelada'){
       var sid=novoId();
-      for(var i=0;i<nParc;i++)state.lancamentos.push({id:novoId(),tipo:'gasto',data:dataNoMes(data,i),descricao:desc,valorCentavos:cents,categoria:d.categoria,criadoEm:agora,serie:{id:sid,parcela:i+1,total:nParc}});
+      for(var i=0;i<nParc;i++){var lp={id:novoId(),tipo:'gasto',data:dataNoMes(data,i),descricao:desc,valorCentavos:cents,categoria:d.categoria,criadoEm:agora,serie:{id:sid,parcela:i+1,total:nParc},pagamento:d.pagamento};fixarConta(lp);state.lancamentos.push(lp);}
       concluir(d,nParc+' parcelas adicionadas, até '+mesLabel(dataNoMes(data,nParc-1).slice(0,7)).toLowerCase()+'.');
     }else{
-      state.lancamentos.push({id:novoId(),tipo:tipo,data:data,descricao:desc,valorCentavos:cents,categoria:d.categoria,criadoEm:agora});
-      concluir(d,tipo==='gasto'?'Gasto adicionado.':'Renda adicionada.');
+      var nl={id:novoId(),tipo:tipo,data:data,descricao:desc,valorCentavos:cents,categoria:d.categoria,criadoEm:agora,pagamento:d.pagamento};
+      fixarConta(nl);state.lancamentos.push(nl);
+      concluir(d,tipo==='gasto'?'Gasto adicionado.':tipo==='renda'?'Renda adicionada.':'Investimento adicionado.');
     }
     return;
   }
@@ -1073,10 +1147,12 @@ form.addEventListener('submit',function(e){
       }},
       {rotulo:'Este mês e os próximos',tipo:'primary',run:function(){
         Object.keys(f.excecoes).forEach(function(m){if(m>=k)delete f.excecoes[m];});
-        if(k<=f.inicio){f.descricao=desc;f.valorCentavos=cents;f.categoria=d.categoria;f.dia=Number(data.slice(8));}
+        if(k<=f.inicio){f.descricao=desc;f.valorCentavos=cents;f.categoria=d.categoria;f.dia=Number(data.slice(8));if(d.pagamento)f.pagamento='credito';else delete f.pagamento;}
         else{
           f.fim=addMes(k,-1);
-          state.fixas.push({id:novoId(),tipo:f.tipo,descricao:desc,valorCentavos:cents,categoria:d.categoria,dia:Number(data.slice(8)),inicio:k,fim:null,excecoes:{},criadoEm:agora});
+          var nf2={id:novoId(),tipo:f.tipo,descricao:desc,valorCentavos:cents,categoria:d.categoria,dia:Number(data.slice(8)),inicio:k,fim:null,excecoes:{},criadoEm:agora};
+          if(d.pagamento)nf2.pagamento='credito';
+          state.fixas.push(nf2);
         }
         return function(){concluir(d,'Conta fixa atualizada a partir de '+mesLabel(k).toLowerCase()+'.');};
       }}
@@ -1093,12 +1169,12 @@ form.addEventListener('submit',function(e){
     abrirDialogo({titulo:'Alterar parcelas',corpo:'Esta é a parcela '+s.parcela+' de '+s.total+'. Aplicar a mudança em quais parcelas?',acoes:[
       cancelar(),
       {rotulo:'Só esta parcela',run:function(){
-        aplicarEm(l,d);l.data=data;
+        aplicarEm(l,d);l.data=data;fixarConta(l);
         return function(){concluir(d,'Parcela '+s.parcela+' atualizada.');};
       }},
       {rotulo:restantes>1?'Esta e as '+(restantes-1)+' seguintes':'Esta parcela (é a última)',tipo:'primary',run:function(){
         state.lancamentos.forEach(function(x){
-          if(x.serie&&x.serie.id===s.id&&x.serie.parcela>=s.parcela){aplicarEm(x,d);x.data=dataNoMes(data,x.serie.parcela-s.parcela);}
+          if(x.serie&&x.serie.id===s.id&&x.serie.parcela>=s.parcela){aplicarEm(x,d);x.data=dataNoMes(data,x.serie.parcela-s.parcela);fixarConta(x);}
         });
         return function(){concluir(d,plural(restantes,'parcela atualizada','parcelas atualizadas')+'.');};
       }}
@@ -1107,7 +1183,7 @@ form.addEventListener('submit',function(e){
   }
 
   /* Edição simples */
-  l.tipo=tipo;aplicarEm(l,d);l.data=data;
+  l.tipo=tipo;aplicarEm(l,d);l.data=data;fixarConta(l);
   concluir(d,'Lançamento atualizado.');
 });
 

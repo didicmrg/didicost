@@ -43,10 +43,12 @@
         <small id="saldo-lbl">Saldo do mês</small>
         <p class="big" id="saldo-val">—</p>
         <p class="note" id="saldo-note" hidden></p>
-        <div class="split">
+        <div class="split" id="saldo-split">
           <div><small>Renda</small><b id="renda-val">—</b></div>
           <div><small>Gastos</small><b id="gastos-val">R$ 0,00</b></div>
+          <div id="inv-col" hidden><small>Investido</small><b id="investido-val">R$ 0,00</b></div>
         </div>
+        <p class="note" id="fatura-note" hidden></p>
         <p class="st" id="lim-pill" hidden></p>
       </div>
 
@@ -80,7 +82,7 @@
       <h2 class="sec" id="t-inv" style="margin:14px 0 16px">Investimentos</h2>
       <div class="empty" id="inv-vazio" hidden>
         <b>Nenhum investimento ainda</b>
-        <p>Ao adicionar um gasto, escolha uma categoria com "Investimento" no nome. Esses valores somam aqui, mês a mês, inclusive aportes fixos e parcelados.</p>
+        <p>Toque em + Adicionar e escolha <b>Investir</b>: o valor soma aqui sem contar como gasto. Gastos com uma categoria "Investimento" também entram, inclusive fixos e parcelados.</p>
         <button type="button" class="btn primary" id="inv-criar" style="margin-top:14px">Criar categoria Investimento</button>
       </div>
       <div id="inv-cont">
@@ -139,6 +141,26 @@
         </div>
       </div>
       <div class="panel">
+        <h3 class="flabel" style="margin:0">Cartão de crédito</h3>
+        <p>Compras no crédito só descontam no mês em que a fatura vence. Mudar estes dias vale para as próximas compras.</p>
+        <form id="cartao-form" novalidate>
+          <div class="two">
+            <div class="field">
+              <label for="f-vence">Vence no dia</label>
+              <input id="f-vence" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" aria-describedby="e-vence">
+              <p class="err" id="e-vence"></p>
+            </div>
+            <div class="field">
+              <label for="f-fecha">Fecha no dia (opcional)</label>
+              <input id="f-fecha" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="—" autocomplete="off" aria-describedby="e-fecha h-fecha">
+              <p class="err" id="e-fecha"></p>
+            </div>
+          </div>
+          <p class="hint" id="h-fecha" style="margin-top:10px"></p>
+          <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">Salvar cartão</button></div>
+        </form>
+      </div>
+      <div class="panel">
         <h3 class="flabel" style="margin:0">Categorias</h3>
         <p>Crie aqui ou direto ao adicionar um gasto. Ao salvar um gasto, o app aprende as palavras da descrição para sugerir a categoria da próxima vez.</p>
         <form id="cat-add" class="row" novalidate>
@@ -195,11 +217,20 @@
   <form class="sheet" id="form" novalidate role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <div class="grab" aria-hidden="true"></div>
     <h2 id="sheet-title">Novo lançamento</h2>
-    <fieldset class="seg">
+    <fieldset class="seg seg3">
       <legend class="sr">Tipo de lançamento</legend>
       <input type="radio" name="tipo" id="t-gasto" value="gasto" checked><label for="t-gasto">Gasto</label>
       <input type="radio" name="tipo" id="t-renda" value="renda"><label for="t-renda">Renda</label>
+      <input type="radio" name="tipo" id="t-invest" value="investimento"><label for="t-invest">Investir</label>
     </fieldset>
+    <div class="field" id="pag-wrap">
+      <span class="flabel" id="pag-lbl">Pagamento</span>
+      <fieldset class="seg" aria-labelledby="pag-lbl">
+        <input type="radio" name="pag" id="p-debito" value="debito" checked><label for="p-debito">Débito / Pix</label>
+        <input type="radio" name="pag" id="p-credito" value="credito"><label for="p-credito">Crédito</label>
+      </fieldset>
+      <p class="hint" id="pag-hint" hidden></p>
+    </div>
     <p class="hint" id="serie-info" hidden></p>
     <div class="field" id="rep-wrap">
       <span class="flabel" id="rep-lbl">Repetição</span>

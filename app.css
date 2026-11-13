@@ -161,6 +161,10 @@ input[type="date"]{-webkit-appearance:none;appearance:none}
 .quemsou div{display:flex;flex-direction:column;min-width:0}
 .quemsou b{overflow-wrap:anywhere}
 .quemsou small{color:var(--muted);overflow-wrap:anywhere}
+.split.tres{grid-template-columns:repeat(3,minmax(0,1fr))}
+.split.tres b{font-size:19px}
+.item.invest .v{color:var(--butter)}
+#fatura-note{margin-top:10px}
 .mbars{display:flex;flex-direction:column;gap:6px}
 .mbar{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;align-items:center;font-variant-numeric:tabular-nums;font-size:14px}
 .mbar .ml{color:var(--muted);text-transform:capitalize}
