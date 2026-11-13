@@ -292,6 +292,7 @@ function salvar(){
   marcarPendente();
   return true;
 }
+var compraUrl=lerCompraDaUrl();
 var retornoLogin=lerRetornoLogin();
 var sessao=lerSessaoSalva();
 var state=carregar();
@@ -763,6 +764,32 @@ $('#inv-criar').addEventListener('click',function(){
   if(ok)anunciar('Categoria "Investimento" criada. Use-a ao adicionar seus aportes.');
 });
 
+/* ---------- Compras vindas do Atalhos (Apple Pay) ----------
+   O atalho abre didicost.vercel.app/?compra=1&valor=...&loja=... e o app lança a compra no crédito. */
+function lerCompraDaUrl(){
+  var q=new URLSearchParams(location.search||'');
+  if(q.get('compra')!=='1')return null;
+  var c={valor:q.get('valor')||'',loja:(q.get('loja')||'').trim()};
+  try{history.replaceState(null,'',location.pathname+(location.hash||''));}catch(e){}
+  return c;
+}
+function registrarCompra(c){
+  if(bloqueado())return;
+  var bruto=String(c.valor).replace(/[^\d.,]/g,'');
+  var cents=parseValor(bruto);
+  if(!cents){anunciar('Não consegui ler o valor da compra ('+c.valor+'). Adicione manualmente.');return;}
+  var loja=(c.loja||'Compra Apple Pay').replace(/\s+/g,' ').slice(0,80);
+  var agora=Date.now();
+  var dup=state.lancamentos.some(function(l){return l.origem==='applepay'&&l.descricao===loja&&l.valorCentavos===cents&&agora-Date.parse(l.criadoEm)<5*60000;});
+  if(dup){anunciar('Essa compra já estava registrada.');return;}
+  var cat=sugerir(loja)||'Outros';
+  var l={id:novoId(),tipo:'gasto',data:hoje(),descricao:loja,valorCentavos:cents,categoria:cat,criadoEm:new Date().toISOString(),pagamento:'credito',origem:'applepay'};
+  fixarConta(l);state.lancamentos.push(l);
+  var extra=verificarAlertas([mesDe(l),hoje().slice(0,7)]);
+  var ok=salvar();mes=mesDe(l);irPara('lanc');render();
+  if(ok)anunciar('Apple Pay: '+brl(cents)+' em '+loja+' ('+cat+'), fatura de '+dataCurta(dataConta(l))+'.'+(extra?' '+extra:'')+(sessao?'':' Sem conta neste navegador: a compra ficou só aqui.'));
+}
+
 /* ---------- Renderização ---------- */
 function render(){renderBanners();renderMes();renderResumo();renderFiltro();renderLista();renderCats();renderFixas();renderResumoTab();renderLimiteForm();renderBackupStatus();renderConta();renderInvest();renderCartao();}
 
@@ -908,6 +935,7 @@ function renderLista(){
     var d=document.createElement('span');d.className='d';d.textContent=l.descricao;
     var meta=dataCurta(dataConta(l))+' · '+(l.tipo==='renda'?'Renda':l.tipo==='investimento'?'Investimento':l.categoria);
     if(l.pagamento==='credito')meta+=' · Crédito, compra '+dataCurta(l.data);
+    if(l.origem==='applepay')meta+=' · Apple Pay';
     if(l.serie)meta+=' · Parcela '+l.serie.parcela+'/'+l.serie.total;
     if(l.virtual)meta+=' · Fixa';
     var m=document.createElement('span');m.className='m';m.textContent=meta;
@@ -1331,7 +1359,8 @@ $('#tab-aj').addEventListener('click',function(){irPara('aj');});
 render();
 if(retornoLogin&&retornoLogin.erro){anunciar('Não foi possível entrar com Google: '+retornoLogin.erro);}
 else if(retornoLogin&&PUBLICADO){concluirLogin(retornoLogin);}
-else if(sessao){sincronizar();}
+else if(sessao){sincronizar().then(function(){if(compraUrl)registrarCompra(compraUrl);});}
+if(compraUrl&&!sessao)registrarCompra(compraUrl);
 window.addEventListener('online',function(){sincronizar();});
 window.addEventListener('offline',function(){if(sessao)setSync('offline');});
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')sincronizar();});
