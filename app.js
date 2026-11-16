@@ -123,7 +123,7 @@ function sincronizar(){
       }
       setSync('ok');
     });
-  }).catch(erroSync).then(function(){
+  }).then(function(){return puxarEntradas();}).catch(erroSync).then(function(){
     sincronizando=false;
     if(deNovo){deNovo=false;return sincronizar();}
   });
@@ -162,6 +162,7 @@ function lerRetornoLogin(){
 }
 function trocarPerfil(){
   erroLeitura=false;storageOk=true;filtro='';
+  waEstado={carregado:false,telefone:null,codigo:null,expira:0};if(sessao)carregarVinculo();
   state=carregar();render();
 }
 function concluirLogin(t){
@@ -250,6 +251,96 @@ function renderConta(){
     var bs=document.createElement('button');bs.type='button';bs.className='btn';bs.textContent='Sincronizar agora';bs.addEventListener('click',function(){sincronizar();});acts.appendChild(bs);
   }
   var bo=document.createElement('button');bo.type='button';bo.className='btn ghost-danger';bo.textContent='Sair da conta';bo.addEventListener('click',sair);acts.appendChild(bo);
+  box.appendChild(acts);
+}
+
+/* ---------- Lançamentos que chegam pelo WhatsApp ----------
+   O WhatsApp grava na tabela "entradas"; aqui o app traz para os lançamentos, envia para a conta e só então apaga as entradas. */
+var WA_NUMERO=''; /* número do DIDICOST no WhatsApp, só dígitos com DDI (ex.: 15551234567). Vazio: o app não mostra o atalho para abrir a conversa. */
+function puxarEntradas(){
+  if(!sessao||!sessao.user||sessao.expirada)return Promise.resolve();
+  return tokenValido().then(function(tk){
+    return sbFetch('/rest/v1/entradas?select=id,tipo,descricao,valor_centavos,data,pagamento,origem,criado_em&order=criado_em.asc',{token:tk}).then(lerJson).then(function(rows){
+      if(!rows||!rows.length)return;
+      var novos=0;
+      rows.forEach(function(e){
+        var id='wa:'+e.id;
+        if(state.lancamentos.some(function(l){return l.id===id;}))return;
+        if(!dataValida(e.data)||!Number.isSafeInteger(Number(e.valor_centavos)))return;
+        var l={id:id,tipo:e.tipo,data:e.data,descricao:String(e.descricao).slice(0,80),valorCentavos:Number(e.valor_centavos),categoria:null,criadoEm:e.criado_em||new Date().toISOString(),origem:e.origem||'whatsapp'};
+        if(e.tipo==='gasto'){
+          l.categoria=sugerir(l.descricao)||'Outros';
+          if(state.categorias.indexOf(l.categoria)<0)state.categorias.push(l.categoria);
+          if(e.pagamento==='credito')l.pagamento='credito';
+        }
+        fixarConta(l);
+        state.lancamentos.push(l);novos++;
+      });
+      if(novos){
+        verificarAlertas([hoje().slice(0,7)]);
+        gravarLocal();
+        var m=lerMeta();m.pendente=true;m.versao=(m.versao||0)+1;gravarMeta(m);
+        render();
+        anunciar(novos===1?'1 lançamento chegou pelo WhatsApp.':novos+' lançamentos chegaram pelo WhatsApp.');
+      }
+      return enviar(tk).then(function(){
+        var ids=rows.map(function(e){return e.id;}).join(',');
+        return sbFetch('/rest/v1/entradas?id=in.('+ids+')',{method:'DELETE',token:tk}).then(lerJson);
+      });
+    });
+  });
+}
+var waEstado={carregado:false,telefone:null,codigo:null,expira:0};
+function carregarVinculo(){
+  if(!PUBLICADO||!sessao||sessao.expirada)return;
+  tokenValido().then(function(tk){
+    return sbFetch('/rest/v1/whatsapp_vinculos?select=telefone',{token:tk}).then(lerJson);
+  }).then(function(rows){
+    waEstado.carregado=true;waEstado.telefone=rows&&rows[0]?rows[0].telefone:null;
+    if(waEstado.telefone)waEstado.codigo=null;
+    renderWhats();
+  }).catch(function(){});
+}
+function gerarCodigo(){
+  tokenValido().then(function(tk){
+    return sbFetch('/rest/v1/rpc/gerar_codigo_whatsapp',{method:'POST',token:tk,body:'{}'}).then(lerJson);
+  }).then(function(c){
+    waEstado.codigo=String(c);waEstado.expira=Date.now()+15*60000;renderWhats();
+    anunciar('Código gerado. Mande no WhatsApp: vincular '+c);
+  }).catch(function(){anunciar('Não consegui gerar o código. Verifique a internet e tente de novo.');});
+}
+function desligarWhats(){
+  abrirDialogo({titulo:'Desligar o WhatsApp?',corpo:'Mensagens desse número deixam de entrar no DIDICOST. Os lançamentos que já chegaram continuam no app.',acoes:[cancelar(),{rotulo:'Desligar',tipo:'danger',run:function(){
+    tokenValido().then(function(tk){return sbFetch('/rest/v1/whatsapp_vinculos?telefone=neq.0',{method:'DELETE',token:tk}).then(lerJson);})
+      .then(function(){waEstado.telefone=null;renderWhats();anunciar('WhatsApp desligado.');})
+      .catch(function(){anunciar('Não consegui desligar agora. Tente de novo.');});
+    return true;
+  }}]});
+}
+function mascaraTel(t){t=String(t);return t.length>8?'+'+t.slice(0,2)+' ('+t.slice(2,4)+') ••••-'+t.slice(-4):t;}
+function renderWhats(){
+  var box=$('#wa-box');if(!box)return;box.textContent='';
+  function p(txt,cls){var e=document.createElement('p');if(cls)e.className=cls;e.textContent=txt;box.appendChild(e);return e;}
+  function b(txt,cls,fn){var e=document.createElement('button');e.type='button';e.className='btn'+(cls?' '+cls:'');e.textContent=txt;e.addEventListener('click',fn);return e;}
+  if(!PUBLICADO){p('Funciona no app publicado, com login Google.');return;}
+  if(!sessao||sessao.expirada){p('Entre com sua conta Google (no painel Conta, acima) para lançar gastos mandando mensagem no WhatsApp.');return;}
+  if(!waEstado.carregado){p('Verificando…');return;}
+  var acts=document.createElement('div');acts.className='actions';
+  if(waEstado.telefone){
+    p('Ligado ao número '+mascaraTel(waEstado.telefone)+'.','strong');
+    p('Mande uma compra por linha: "mercado 50", "uber 23,90 pix", "recebi job 1500", "investi cdb 500". Gastos entram no crédito, a não ser que você escreva pix ou débito.');
+    acts.appendChild(b('Desligar WhatsApp','ghost-danger',desligarWhats));box.appendChild(acts);return;
+  }
+  p('Mande seus gastos por mensagem, como "mercado 50", e eles entram sozinhos no app.');
+  if(waEstado.codigo&&Date.now()<waEstado.expira){
+    var c=p('vincular '+waEstado.codigo,'codigo');
+    c.setAttribute('aria-label','Mensagem para enviar: vincular '+waEstado.codigo.split('').join(' '));
+    p('Mande essa mensagem para '+(WA_NUMERO?'o número do DIDICOST':'o número do DIDICOST no WhatsApp')+'. O código vale 15 minutos.');
+    if(WA_NUMERO){var a=document.createElement('a');a.className='btn primary';a.href='https://wa.me/'+WA_NUMERO+'?text='+encodeURIComponent('vincular '+waEstado.codigo);a.target='_blank';a.rel='noopener';a.textContent='Abrir no WhatsApp';acts.appendChild(a);}
+    acts.appendChild(b('Já mandei','',function(){carregarVinculo();}));
+  }else{
+    acts.appendChild(b('Ligar meu WhatsApp','primary',gerarCodigo));
+  }
   box.appendChild(acts);
 }
 
@@ -791,7 +882,7 @@ function registrarCompra(c){
 }
 
 /* ---------- Renderização ---------- */
-function render(){renderBanners();renderMes();renderResumo();renderFiltro();renderLista();renderCats();renderFixas();renderResumoTab();renderLimiteForm();renderBackupStatus();renderConta();renderInvest();renderCartao();}
+function render(){renderBanners();renderMes();renderResumo();renderFiltro();renderLista();renderCats();renderFixas();renderResumoTab();renderLimiteForm();renderBackupStatus();renderConta();renderInvest();renderCartao();renderWhats();}
 
 function renderBanners(){
   var box=$('#banners');box.textContent='';
@@ -1361,6 +1452,8 @@ if(retornoLogin&&retornoLogin.erro){anunciar('Não foi possível entrar com Goog
 else if(retornoLogin&&PUBLICADO){concluirLogin(retornoLogin);}
 else if(sessao){sincronizar().then(function(){if(compraUrl)registrarCompra(compraUrl);});}
 if(compraUrl&&!sessao)registrarCompra(compraUrl);
+if(sessao)carregarVinculo();
+document.getElementById('tab-aj').addEventListener('click',function(){if(sessao&&!waEstado.telefone)carregarVinculo();});
 window.addEventListener('online',function(){sincronizar();});
 window.addEventListener('offline',function(){if(sessao)setSync('offline');});
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')sincronizar();});
