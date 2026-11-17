@@ -58,13 +58,13 @@ function lerLinha(linha: string): Entrada | null {
   let resto = (linha.slice(0, ult.index) + " " + linha.slice(ult.index! + ult[0].length)).replace(/\breais\b/gi, " ");
   const n = " " + norm(resto) + " ";
   let tipo = "gasto";
-  let pagamento: string | null = "credito";
+  let pagamento: string | null = "debito";
   let data = hojeSP();
   const tirar: RegExp[] = [];
   if (/ (recebi|renda|entrada) /.test(n) || /^\s*\+/.test(linha)) { tipo = "renda"; pagamento = null; tirar.push(/\b(recebi|renda|entrada)\b/gi, /^\s*\+/); }
   else if (/ (investi|investimento|aporte|aportei) /.test(n)) { tipo = "investimento"; pagamento = null; tirar.push(/\b(investi|investimento|aporte|aportei)\b/gi); }
   else if (/ (pix|debito|dinheiro) /.test(n)) { pagamento = "debito"; tirar.push(/\b(pix|d[eé]bito|dinheiro|no|na)\b/gi); }
-  else if (/ (credito|cartao) /.test(n)) { tirar.push(/\b(cr[eé]dito|cart[aã]o|no|na)\b/gi); }
+  else if (/ (credito|cartao) /.test(n)) { pagamento = "credito"; tirar.push(/\b(cr[eé]dito|cart[aã]o|no|na)\b/gi); }
   if (/ ontem /.test(n)) { data = hojeSP(-1); tirar.push(/\bontem\b/gi); }
   for (const r of tirar) resto = resto.replace(r, " ");
   const descricao = resto.replace(/[-–:·,;]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
@@ -101,7 +101,7 @@ async function assinaturaValida(req: Request, corpo: string): Promise<boolean> {
 }
 
 const AJUDA =
-  "DIDICOST 💸\n\nMande uma compra por linha:\n• mercado 50\n• uber 23,90 pix\n• ontem farmácia 32\n• recebi job 1500\n• investi cdb 500\n\nGastos entram no crédito, a não ser que você escreva pix ou débito.";
+  "DIDICOST 💸\n\nMande uma compra por linha:\n• mercado 50\n• uber 23,90 crédito\n• ontem farmácia 32\n• recebi job 1500\n• investi cdb 500\n\nGastos entram como débito/pix. Para cartão, escreva crédito no fim.";
 
 async function tratarMensagem(msg: any) {
   const de: string = msg.from;
