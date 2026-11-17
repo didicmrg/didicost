@@ -140,6 +140,32 @@ async function tratarMensagem(msg: any) {
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
+  // Diagnóstico: ?diag=<verify token>. Mostra o número e a conta do WhatsApp e inscreve o app nas contas.
+  if (req.method === "GET" && VERIFY_TOKEN && url.searchParams.get("diag") === VERIFY_TOKEN) {
+    const g = async (path: string, metodo = "GET") => {
+      try {
+        const r = await fetch(`https://graph.facebook.com/${GRAPH}/${path}`, { method: metodo, headers: { Authorization: `Bearer ${WA_TOKEN}` } });
+        return await r.json();
+      } catch (e) { return { erro: String(e) }; }
+    };
+    const out: any = { tem_token: !!WA_TOKEN, tem_phone_id: !!PHONE_ID, tem_app_secret: !!APP_SECRET };
+    out.numero = await g(`${PHONE_ID}?fields=display_phone_number,verified_name,status,platform_type,code_verification_status,name_status`);
+    // Descobre as contas do WhatsApp a que o token tem acesso pelo próprio token (não precisa de business_management)
+    const dbg = await g(`debug_token?input_token=${encodeURIComponent(WA_TOKEN)}`);
+    const escopos = dbg?.data?.granular_scopes ?? [];
+    const ids = new Set<string>();
+    for (const e of escopos) if (String(e.scope).startsWith("whatsapp_business")) for (const t of e.target_ids ?? []) ids.add(String(t));
+    out.escopos = escopos.map((e: any) => e.scope);
+    out.contas = { data: [...ids].map((id) => ({ id })) };
+    for (const w of out.contas.data as any[]) {
+      w.info = await g(`${w.id}?fields=name,phone_numbers{id,display_phone_number,status}`);
+      w.apps_antes = await g(`${w.id}/subscribed_apps`);
+      w.inscrever = await g(`${w.id}/subscribed_apps`, "POST");
+      w.apps_depois = await g(`${w.id}/subscribed_apps`);
+    }
+    console.log("diag", JSON.stringify(out));
+    return new Response(JSON.stringify(out, null, 2), { status: 200, headers: { "Content-Type": "application/json; charset=utf-8" } });
+  }
   // Verificação do webhook pela Meta
   if (req.method === "GET") {
     if (VERIFY_TOKEN && url.searchParams.get("hub.mode") === "subscribe" && url.searchParams.get("hub.verify_token") === VERIFY_TOKEN) {
