@@ -192,6 +192,10 @@ Deno.serve(async (req) => {
   for (const entry of payload.entry ?? []) {
     for (const ch of entry.changes ?? []) {
       for (const msg of ch.value?.messages ?? []) tarefas.push(tratarMensagem(msg).catch((e) => console.error("mensagem", e)));
+      for (const st of ch.value?.statuses ?? []) {
+        const info = { status: st.status, final: String(st.recipient_id ?? "").slice(-4), erros: st.errors ?? null };
+        if (st.status === "failed") console.error("entrega falhou", JSON.stringify(info)); else console.log("entrega", JSON.stringify(info));
+      }
     }
   }
   await Promise.all(tarefas);
