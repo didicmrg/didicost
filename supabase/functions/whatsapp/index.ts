@@ -155,6 +155,8 @@ Deno.serve(async (req) => {
     const escopos = dbg?.data?.granular_scopes ?? [];
     const ids = new Set<string>();
     for (const e of escopos) if (String(e.scope).startsWith("whatsapp_business")) for (const t of e.target_ids ?? []) ids.add(String(t));
+    const wabaParam = url.searchParams.get("waba");
+    if (wabaParam && /^\d+$/.test(wabaParam)) ids.add(wabaParam);
     out.escopos = escopos.map((e: any) => e.scope);
     out.contas = { data: [...ids].map((id) => ({ id })) };
     for (const w of out.contas.data as any[]) {
