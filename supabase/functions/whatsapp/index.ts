@@ -72,15 +72,18 @@ function lerLinha(linha: string): Entrada | null {
   return { tipo, descricao: descricao.charAt(0).toUpperCase() + descricao.slice(1), valor_centavos: valor, data, pagamento };
 }
 
-async function responder(para: string, texto: string) {
-  if (!WA_TOKEN || !PHONE_ID) return;
+async function responder(para: string, texto: string): Promise<any> {
+  if (!WA_TOKEN || !PHONE_ID) return { erro: "sem token ou phone id" };
   try {
-    await fetch(`https://graph.facebook.com/${GRAPH}/${PHONE_ID}/messages`, {
+    const r = await fetch(`https://graph.facebook.com/${GRAPH}/${PHONE_ID}/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({ messaging_product: "whatsapp", to: para, type: "text", text: { body: texto } }),
     });
-  } catch (_) { /* resposta é cortesia; a entrada já foi salva */ }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) console.error("resposta falhou", r.status, JSON.stringify(j?.error ?? j));
+    return { status: r.status, corpo: j };
+  } catch (e) { console.error("resposta falhou", String(e)); return { erro: String(e) }; }
 }
 
 async function assinaturaValida(req: Request, corpo: string): Promise<boolean> {
@@ -164,6 +167,11 @@ Deno.serve(async (req) => {
       w.apps_antes = await g(`${w.id}/subscribed_apps`);
       w.inscrever = await g(`${w.id}/subscribed_apps`, "POST");
       w.apps_depois = await g(`${w.id}/subscribed_apps`);
+    }
+    if (url.searchParams.get("enviar") === "1") {
+      const { data: vs } = await db.from("whatsapp_vinculos").select("telefone");
+      out.envios = [];
+      for (const v of vs ?? []) out.envios.push({ final: String(v.telefone).slice(-4), resultado: await responder(v.telefone, "Teste do DIDICOST ✅") });
     }
     console.log("diag", JSON.stringify(out));
     return new Response(JSON.stringify(out, null, 2), { status: 200, headers: { "Content-Type": "application/json; charset=utf-8" } });
